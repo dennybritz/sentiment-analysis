@@ -20,6 +20,7 @@ SENTENCE_LENGTH_PADDED = int(os.getenv("SENTENCE_LENGTH_PADDED", "512"))
 AFFINE_LAYER_DIM = int(os.getenv("AFFINE_LAYER_DIM", "256"))
 EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "200"))
 L1_NUM_FILTERS = int(os.getenv("L1_NUM_FILTERS", "150"))
+L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "2,3,4").split(","))
 
 # Training parameters
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
@@ -34,7 +35,6 @@ TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./summaries/train")
 DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./summaries/dev")
 
 # Misc Parameters
-L1_FILTER_SIZES = [2, 3, 4]
 PADDING_CHARACTER = u"\u0000"
 NUM_CLASSES = 2
 
