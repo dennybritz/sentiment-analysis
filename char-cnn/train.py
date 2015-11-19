@@ -272,6 +272,9 @@ with tf.Session() as sess:
     # Initialize queue runners
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    print_shapes()
+    print("\nTraining Start")
+    print("----------")
     # Train until we're done
     try:
         while not coord.should_stop():
