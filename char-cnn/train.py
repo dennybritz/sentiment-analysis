@@ -178,9 +178,9 @@ with tf.name_scope("dropout"):
 # --------------------------------------------------
 with tf.name_scope("softmax"):
     W_softmax = tf.Variable(tf.truncated_normal(
-        [AFFINE_LAYER_DIM, NUM_CLASSES], stddev=0.1), name="W_softmax")
+        [AFFINE_LAYER_DIM, NUM_CLASSES], stddev=0.1), name="W")
     b_softmax = tf.Variable(
-        tf.constant(0.1, shape=[NUM_CLASSES]), name="b_softmax")
+        tf.constant(0.1, shape=[NUM_CLASSES]), name="b")
     y = tf.nn.softmax(
         tf.matmul(h_affine_drop, W_softmax) + b_softmax, name="y")
 
