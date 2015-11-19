@@ -89,9 +89,10 @@ def debug_shape(name, tensor):
 
 # Input data
 # --------------------------------------------------
-
+# Store the data in graph notes
 train_x_const = tf.constant(train_x.astype("int32"))
 train_y_const = tf.constant(train_y.astype("float32"))
+# Use Tensorflow's queues and batching features
 x_slice, y_slice = tf.train.slice_input_producer(
     [train_x_const, train_y_const],
     num_epochs=NUM_EPOCHS)
