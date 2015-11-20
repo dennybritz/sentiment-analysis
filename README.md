@@ -1,24 +1,8 @@
 ## AWS Setup (Ubuntu)
 
-Setting up a CPU instance
+Using AMI `ami-bad692d0`. The root volume size must be at least 32GB.
 
-```bash
-# Install Git LFS
-sudo apt-get update
-curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-sudo apt-get install -y git-lfs
-git-lfs install
- 
-sudo apt-get install -y build-essential git python-pip python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot unzip python-numpy swig python-pandas python-sklearn htop
-sudo pip install -U pip
-sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-sudo pip install --upgrade pandas scikit-learn
-
-git clone https://github.com/dennybritz/sentiment-analysis.git
-cd sentiment-analysis/char-cnn
-./train.py
-
-```
+### Setting up a GPU instance
 
 ```bash
 # Install build tools
@@ -69,11 +53,8 @@ cd tensorflow
 # Build with GPU support, use 3.0 as CUDA version. This will take a while.
 TF_UNOFFICIAL_SETTING=1 ./configure
 bazel build -c opt --config=cuda //tensorflow/cc:tutorials_example_trainer
-
-# Build TF python package
 bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
 bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
-# Install python packages
 sudo pip install --upgrade /tmp/tensorflow_pkg/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 
 # Clone this repo and install dependencies
@@ -83,18 +64,27 @@ sudo pip install --upgrade pandas scikit-learn
 
 ```
 
-Docker:
+### Setting up a CPU instance
 
 ```bash
-# Run docker container
-export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda* | xargs -I{} echo '-v {}:{}')
-export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-export CUDA_SRCS="-v /usr/local/cuda:/usr/local/cuda -v /usr/share/nvidia:/usr/share/nvidia"
-docker run --rm -it $CUDA_SO $CUDA_SRCS $DEVICES -v /lib/modules:/lib/modules b.gcr.io/tensorflow/tensorflow-full-gpu
+# Install Git LFS
+sudo apt-get update
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+sudo apt-get install -y git-lfs
+git-lfs install
+ 
+sudo apt-get install -y build-essential git python-pip python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot unzip python-numpy swig python-pandas python-sklearn htop
+sudo pip install -U pip
+sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+sudo pip install --upgrade pandas scikit-learn
+
+git clone https://github.com/dennybritz/sentiment-analysis.git
+cd sentiment-analysis/char-cnn
+./train.py
+
 ```
 
-
-Python Example
+### Python Test for Device Placement
 
 ```python
 import tensorflow as tf
