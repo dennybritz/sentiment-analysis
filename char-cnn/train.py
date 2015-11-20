@@ -32,10 +32,10 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "128"))
 EVALUATE_EVERY = int(os.getenv("EVALUATE_EVERY", "16"))
 
 # Output files
-RUNTIME = int(time.time())
-CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "./runs/%s/checkpoints/char-cnn" % RUNTIME)
-TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/train" % RUNTIME)
-DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/dev" % RUNTIME)
+RUNDIR = "./runs/%s" % int(time.time())
+CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "%s/checkpoints/char-cnn" % RUNDIR)
+TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "%s/summaries/train" % RUNDIR)
+DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "%s/summaries/dev" % RUNDIR)
 
 # Misc Parameters
 NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
@@ -164,22 +164,22 @@ debug_shape("pooled-output-final-h", h_pool)
 debug_shape("pooled-flattened", h_pool_flat)
 
 # Not using extra affine layer (like Kim et al)
-h_affine = h_pool_flat
-AFFINE_LAYER_DIM = total_filters
+# h_affine = h_pool_flat
+# AFFINE_LAYER_DIM = total_filters
 
 # Layer 4: Fully connected (affine) layer
 # --------------------------------------------------
-# with tf.name_scope("affine"):
-#     W_affine = tf.Variable(
-#         tf.truncated_normal([total_filters, AFFINE_LAYER_DIM], stddev=0.1),
-#         name="W_affine")
-#     b_affine = tf.Variable(
-#         tf.constant(0.1, shape=[AFFINE_LAYER_DIM]),
-#         name="b_affine")
-#     h_affine = tf.nn.relu(
-#         tf.matmul(h_pool_flat, W_affine) + b_affine,
-#         name="h_affine")
-#     debug_shape("h", h_affine)
+with tf.name_scope("affine"):
+    W_affine = tf.Variable(
+        tf.truncated_normal([total_filters, AFFINE_LAYER_DIM], stddev=0.1),
+        name="W_affine")
+    b_affine = tf.Variable(
+        tf.constant(0.1, shape=[AFFINE_LAYER_DIM]),
+        name="b_affine")
+    h_affine = tf.nn.relu(
+        tf.matmul(h_pool_flat, W_affine) + b_affine,
+        name="h_affine")
+    debug_shape("h", h_affine)
 
 # Dropout
 # --------------------------------------------------
@@ -285,6 +285,8 @@ session_config = tf.ConfigProto(
     log_device_placement=LOG_DEVICE_PLACEMENT,
     allow_soft_placement=ALLOW_SOFT_PLACEMENT)
 with tf.Session(config=session_config) as sess:
+    # Write gaph def TODO
+    print(tf.train.write_graph(sess.graph_def, "%s/graph" % RUNDIR, "graph.pb", as_text=False))
     sess.run(tf.initialize_all_variables())
     # Initialize queue runners
     coord = tf.train.Coordinator()
