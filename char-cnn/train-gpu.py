@@ -38,6 +38,7 @@ TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/train" %
 DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/dev" % RUNTIME)
 
 # Misc Parameters
+LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", "false"))
 PADDING_CHARACTER = u"\u0000"
 NUM_CLASSES = 2
 
@@ -279,7 +280,7 @@ print("\nTotal Parameters: {:,}\n".format(total_parameters))
 # Initialize training
 step = 0
 
-with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+with tf.Session(config=tf.ConfigProto(log_device_placement=LOG_DEVICE_PLACEMENT)) as sess:
     sess.run(tf.initialize_all_variables())
     # Initialize queue runners
     coord = tf.train.Coordinator()
