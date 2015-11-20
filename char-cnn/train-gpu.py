@@ -25,7 +25,6 @@ L1_NUM_FILTERS = int(os.getenv("L1_NUM_FILTERS", "128"))
 L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "1,2,3,4").split(","))
 
 # Training parameters
-NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
 DROPOUT_PROB = float(os.getenv("DROPOUT_PROB", "0.5"))
 NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "100"))
@@ -39,6 +38,7 @@ TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/train" %
 DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/dev" % RUNTIME)
 
 # Misc Parameters
+NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
 ALLOW_SOFT_PLACEMENT = bool(os.getenv("ALLOW_SOFT_PLACEMENT", 1))
 LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", 0))
 PADDING_CHARACTER = u"\u0000"
