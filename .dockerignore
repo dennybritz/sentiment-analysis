@@ -1,3 +1,5 @@
-.ipynb_*
-summaries
-*.ipynb
+.ipynb_checkpoints
+*/.ipynb_checkpoints
+*/*/.ipynb_checkpoints
+*/*.ipynb
+*/*/*.ipynb
