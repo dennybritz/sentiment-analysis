@@ -5,6 +5,7 @@ import os
 import numpy as np
 import tensorflow as tf
 import math
+import time
 from sklearn import metrics
 from sklearn.cross_validation import train_test_split
 
@@ -31,9 +32,10 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "128"))
 EVALUATE_EVERY = int(os.getenv("EVALUATE_EVERY", "16"))
 
 # Output files
-CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "./checkpoints/char-cnn")
-TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./summaries/train")
-DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./summaries/dev")
+RUNTIME = int(time.time())
+CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "./%s/checkpoints/char-cnn" % RUNTIME)
+TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./%s/summaries/train" % RUNTIME)
+DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./%s/summaries/dev" % RUNTIME)
 
 # Misc Parameters
 PADDING_CHARACTER = u"\u0000"
