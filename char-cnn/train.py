@@ -32,9 +32,9 @@ EVALUATE_EVERY = int(os.getenv("EVALUATE_EVERY", "16"))
 
 # Output files
 RUNTIME = int(time.time())
-CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "./%s/checkpoints/char-cnn" % RUNTIME)
-TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./%s/summaries/train" % RUNTIME)
-DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./%s/summaries/dev" % RUNTIME)
+CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "./runs/%s/checkpoints/char-cnn" % RUNTIME)
+TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/train" % RUNTIME)
+DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/dev" % RUNTIME)
 
 # Misc Parameters
 PADDING_CHARACTER = u"\u0000"
