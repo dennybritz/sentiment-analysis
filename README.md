@@ -1,11 +1,34 @@
 ## AWS Setup (Ubuntu)
 
+Setting up a CPU instance
+
+```bash
+docker-machine create -d amazonec2 --amazonec2-access-key $AWS_ACCESS_KEY_ID --amazonec2-secret-key $AWS_SECRET_ACCESS_KEY --amazonec2-vpc-id vpc-86da66e3  --amazonec2-instance-type c4.4xlarge --amazonec2-request-spot-instance --amazonec2-spot-price 0.25 aws-cpu
+
+```
+
+```bash
+# Install Git LFS
+sudo apt-get update
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+sudo apt-get install -y git-lfs
+git-lfs install
+ 
+sudo apt-get install -y build-essential git python-pip python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydotunzip python-numpy pythnswig python-pandas python-sklearn
+sudo pip install -U pip
+sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+
+git clone https://github.com/dennybritz/sentiment-analysis.git
+cd sentiment-analysis/char-cnn
+./train.py
+
+```
+
 ```bash
 # Install build tools
 sudo apt-get update
-sudo apt-get install -y build-essential git python-pip libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev  gfortran python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot linux-headers-generic linux-image-extra-virtual unzip python-numpy swig
+sudo apt-get install -y build-essential git python-pip libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev  gfortran python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot linux-headers-generic linux-image-extra-virtual unzip python-numpy swig python-pandas python-sklearn
 sudo pip install -U pip
-sudo pip install scipy scikit-learn numpy pandas
 
 # Install CUDA 7
 wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1410/x86_64/cuda-repo-ubuntu1410_7.0-28_amd64.deb
@@ -54,7 +77,10 @@ sudo pip install --upgrade /tmp/tensorflow_pkg/tensorflow-0.5.0-cp27-none-linux_
 
 ```bash
 # Git LFS
-# https://packagecloud.io/github/git-lfs
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+sudo apt-get install -y git-lfs
+git-lfs install
+
 cd /home/ubuntu
 git clone https://github.com/dennybritz/sentiment-analysis.git
 cd sentiment-analysis/char-cnn
