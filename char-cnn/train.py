@@ -145,6 +145,7 @@ def build_convpool(filter_size, num_filters):
         name="pool")
 
 # For each filter size, build a convolution + maxpool layer
+total_filters = L1_NUM_FILTERS * len(L1_FILTER_SIZES)
 pooled_outputs = []
 for i, filter_size in enumerate(L1_FILTER_SIZES):
     # Put each conv layer on a separate GPU if possible
@@ -154,27 +155,31 @@ for i, filter_size in enumerate(L1_FILTER_SIZES):
             pooled_outputs.append(pooled)
             debug_shape("h", pooled)
 
+
 # Combine all the pooled features into one tensor
+# Flatten the pooled features into a [batch, features] vector
 h_pool = tf.concat(3, pooled_outputs)
+h_pool_flat = tf.reshape(h_pool, [-1, total_filters])
 debug_shape("pooled-output-final-h", h_pool)
+debug_shape("pooled-flattened", h_pool_flat)
+
+# Not using extra affine layer (like Kim et al)
+h_affine = h_pool_flat
+AFFINE_LAYER_DIM = total_filters
 
 # Layer 4: Fully connected (affine) layer
 # --------------------------------------------------
-total_filters = L1_NUM_FILTERS * len(L1_FILTER_SIZES)
-with tf.name_scope("affine"):
-    # Flatten the pooled features into a [batch, features] vector
-    h_pool_flat = tf.reshape(h_pool, [-1, total_filters])
-    W_affine = tf.Variable(
-        tf.truncated_normal([total_filters, AFFINE_LAYER_DIM], stddev=0.1),
-        name="W_affine")
-    b_affine = tf.Variable(
-        tf.constant(0.1, shape=[AFFINE_LAYER_DIM]),
-        name="b_affine")
-    h_affine = tf.nn.relu(
-        tf.matmul(h_pool_flat, W_affine) + b_affine,
-        name="h_affine")
-    debug_shape("pooled-flattened", h_pool_flat)
-    debug_shape("h", h_affine)
+# with tf.name_scope("affine"):
+#     W_affine = tf.Variable(
+#         tf.truncated_normal([total_filters, AFFINE_LAYER_DIM], stddev=0.1),
+#         name="W_affine")
+#     b_affine = tf.Variable(
+#         tf.constant(0.1, shape=[AFFINE_LAYER_DIM]),
+#         name="b_affine")
+#     h_affine = tf.nn.relu(
+#         tf.matmul(h_pool_flat, W_affine) + b_affine,
+#         name="h_affine")
+#     debug_shape("h", h_affine)
 
 # Dropout
 # --------------------------------------------------
@@ -293,7 +298,8 @@ with tf.Session(config=session_config) as sess:
             train_batch(step)
             if(step % EVALUATE_EVERY == 0):
                 evaluate_dev(step)
-                saver.save(sess, CHECKPOINT_PREFIX, global_step=step)
+                save_path = saver.save(sess, CHECKPOINT_PREFIX, global_step=step)
+                print("Saved model to %s" % save_path)
             step += 1
     except tf.errors.OutOfRangeError:
         # We're done
