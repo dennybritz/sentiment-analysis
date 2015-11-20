@@ -18,9 +18,9 @@ import utils.ymr_data as ymr
 # Model Hyperparameters
 SENTENCE_LENGTH_PADDED = int(os.getenv("SENTENCE_LENGTH_PADDED", "512"))
 AFFINE_LAYER_DIM = int(os.getenv("AFFINE_LAYER_DIM", "256"))
-EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "200"))
-L1_NUM_FILTERS = int(os.getenv("L1_NUM_FILTERS", "150"))
-L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "2,3,4").split(","))
+EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "256"))
+L1_NUM_FILTERS = int(os.getenv("L1_NUM_FILTERS", "128"))
+L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "1,2,3,4").split(","))
 
 # Training parameters
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
