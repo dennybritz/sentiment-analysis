@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 import math
 import time
+import distutils.util
 from sklearn import metrics
 from sklearn.cross_validation import train_test_split
 
@@ -19,9 +20,9 @@ import utils.ymr_data as ymr
 # Model Hyperparameters
 SENTENCE_LENGTH_PADDED = int(os.getenv("SENTENCE_LENGTH_PADDED", "512"))
 AFFINE_LAYER_DIM = int(os.getenv("AFFINE_LAYER_DIM", "256"))
-EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "256"))
+EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "128"))
 L1_NUM_FILTERS = int(os.getenv("L1_NUM_FILTERS", "128"))
-L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "1,2,3,4").split(","))
+L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "1,2,3").split(","))
 
 # Training parameters
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
@@ -37,7 +38,9 @@ TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/train" %
 DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/dev" % RUNTIME)
 
 # Misc Parameters
-LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", "false"))
+NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
+ALLOW_SOFT_PLACEMENT = bool(os.getenv("ALLOW_SOFT_PLACEMENT", 1))
+LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", 0))
 PADDING_CHARACTER = u"\u0000"
 NUM_CLASSES = 2
 
@@ -104,20 +107,21 @@ x, y_ = tf.train.batch([x_slice, y_slice], batch_size=BATCH_SIZE)
 
 # Layer 1: Embedding
 # --------------------------------------------------
-with tf.name_scope("embedding"):
-    W_embeddings = tf.Variable(
-        tf.random_uniform([VOCABULARY_SIZE, EMBEDDING_SIZE], -1.0, 1.0),
-        name="W")
-    embed = tf.nn.embedding_lookup(W_embeddings, x)
-    # Add a dimension corresponding to the channel - it's expected by the conv
-    # layer
-    embed_expanded = tf.expand_dims(embed, -1)
-    debug_shape("W", embed_expanded)
+# Not supported by GPU...
+with tf.device('/cpu:0'):
+    with tf.name_scope("embedding"):
+        W_embeddings = tf.Variable(
+            tf.random_uniform([VOCABULARY_SIZE, EMBEDDING_SIZE], -1.0, 1.0),
+            name="W")
+        embed = tf.nn.embedding_lookup(W_embeddings, x)
+        # Add a dimension corresponding to the channel - it's expected by the conv
+        # layer
+        embed_expanded = tf.expand_dims(embed, -1)
+        debug_shape("W", embed_expanded)
 
 
 # Layer 2 and 3: Convolution + Max-pooling
 # --------------------------------------------------
-
 def build_convpool(filter_size, num_filters):
     """
     Helper function to build a convolution + max-pooling layer
@@ -142,16 +146,17 @@ def build_convpool(filter_size, num_filters):
 
 # For each filter size, build a convolution + maxpool layer
 pooled_outputs = []
-for filter_size in L1_FILTER_SIZES:
-    with tf.variable_scope("conv-maxpool-%s" % filter_size):
-        pooled = build_convpool(filter_size, L1_NUM_FILTERS)
-        pooled_outputs.append(pooled)
-        debug_shape("h", pooled)
+for i, filter_size in enumerate(L1_FILTER_SIZES):
+    # Put each conv layer on a separate GPU if possible
+    with tf.device("/gpu:%d" % (i % NUM_GPUS)):
+        with tf.variable_scope("conv-maxpool-%s" % filter_size):
+            pooled = build_convpool(filter_size, L1_NUM_FILTERS)
+            pooled_outputs.append(pooled)
+            debug_shape("h", pooled)
 
 # Combine all the pooled features into one tensor
 h_pool = tf.concat(3, pooled_outputs)
 debug_shape("pooled-output-final-h", h_pool)
-
 
 # Layer 4: Fully connected (affine) layer
 # --------------------------------------------------
@@ -176,7 +181,6 @@ with tf.name_scope("affine"):
 with tf.name_scope("dropout"):
     h_affine_drop = tf.nn.dropout(h_affine, DROPOUT_PROB)
 
-
 # Layer 5: Softmax / Readout
 # --------------------------------------------------
 with tf.name_scope("softmax"):
@@ -186,7 +190,6 @@ with tf.name_scope("softmax"):
         tf.constant(0.1, shape=[NUM_CLASSES]), name="b")
     y = tf.nn.softmax(
         tf.matmul(h_affine_drop, W_softmax) + b_softmax, name="y")
-
 
 # Training procedure
 # --------------------------------------------------
@@ -236,8 +239,11 @@ def evaluate_dev(step):
     feed_dict = {x: dev_x, y_: dev_y}
     dev_loss, dev_accuracy, dev_summary_str = sess.run(
         [ce_loss_mean, accuracy, summary_op], feed_dict=feed_dict)
-    print "step %d, dev loss %g" % (step, dev_loss)
-    print "step %d, dev accuracy %g" % (step, dev_accuracy)
+    # This is approximate
+    total_examples_seen = BATCH_SIZE * step
+    epoch = float(total_examples_seen)/len(train_y)
+    print "step %d, epoch %.2f dev loss %g" % (step, epoch, dev_loss)
+    print "step %d, epoch %.2f, dev accuracy %g" % (step, epoch, dev_accuracy)
     summary_writer_dev.add_summary(dev_summary_str, step)
 
 
@@ -270,7 +276,10 @@ print("\nTotal Parameters: {:,}\n".format(total_parameters))
 # Initialize training
 step = 0
 
-with tf.Session(config=tf.ConfigProto(log_device_placement=LOG_DEVICE_PLACEMENT, allow_soft_placement=True)) as sess:
+session_config = tf.ConfigProto(
+    log_device_placement=LOG_DEVICE_PLACEMENT,
+    allow_soft_placement=ALLOW_SOFT_PLACEMENT)
+with tf.Session(config=session_config) as sess:
     sess.run(tf.initialize_all_variables())
     # Initialize queue runners
     coord = tf.train.Coordinator()
