@@ -110,6 +110,7 @@ x_slice, y_slice = tf.train.slice_input_producer(
     num_epochs=NUM_EPOCHS)
 x, y_ = tf.train.batch([x_slice, y_slice], batch_size=BATCH_SIZE)
 
+
 # Layer 1: Embedding
 # --------------------------------------------------
 # Not supported by GPU?
@@ -151,7 +152,7 @@ def build_convpool(filter_size, num_filters):
 
 # For each filter size, build a convolution + maxpool layer
 pooled_outputs = []
-for i, filter_size in L1_FILTER_SIZES:
+for i, filter_size in enumerate(L1_FILTER_SIZES):
     # Put each conv layer on a separate GPU if possible
     with tf.device("/gpu:%d" % (i % NUM_GPUS)):
         with tf.variable_scope("conv-maxpool-%s" % filter_size):
