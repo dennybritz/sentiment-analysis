@@ -270,7 +270,7 @@ print("\nTotal Parameters: {:,}\n".format(total_parameters))
 # Initialize training
 step = 0
 
-with tf.Session(config=tf.ConfigProto(log_device_placement=LOG_DEVICE_PLACEMENT)) as sess:
+with tf.Session(config=tf.ConfigProto(log_device_placement=LOG_DEVICE_PLACEMENT, allow_soft_placement=True)) as sess:
     sess.run(tf.initialize_all_variables())
     # Initialize queue runners
     coord = tf.train.Coordinator()

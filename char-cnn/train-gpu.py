@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 import math
 import time
+import distutils.util
 from sklearn import metrics
 from sklearn.cross_validation import train_test_split
 
@@ -38,7 +39,8 @@ TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/train" %
 DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "./runs/%s/summaries/dev" % RUNTIME)
 
 # Misc Parameters
-LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", "false"))
+ALLOW_SOFT_PLACEMENT = bool(os.getenv("ALLOW_SOFT_PLACEMENT", 1))
+LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", 0))
 PADDING_CHARACTER = u"\u0000"
 NUM_CLASSES = 2
 
@@ -280,7 +282,10 @@ print("\nTotal Parameters: {:,}\n".format(total_parameters))
 # Initialize training
 step = 0
 
-with tf.Session(config=tf.ConfigProto(log_device_placement=LOG_DEVICE_PLACEMENT)) as sess:
+session_config = tf.ConfigProto(
+    log_device_placement=LOG_DEVICE_PLACEMENT,
+    allow_soft_placement=ALLOW_SOFT_PLACEMENT)
+with tf.Session(config=session_config) as sess:
     sess.run(tf.initialize_all_variables())
     # Initialize queue runners
     coord = tf.train.Coordinator()
