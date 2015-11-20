@@ -23,6 +23,7 @@ L1_NUM_FILTERS = int(os.getenv("L1_NUM_FILTERS", "128"))
 L1_FILTER_SIZES = map(int, os.getenv("L1_FILTER_SIZES", "1,2,3,4").split(","))
 
 # Training parameters
+NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
 DROPOUT_PROB = float(os.getenv("DROPOUT_PROB", "0.5"))
 NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "100"))
@@ -81,11 +82,11 @@ print("Test set size: %d" % len(test_y))
 
 # Device placement for GPU
 # Unsupported ops run on CPU, matmul on GPU
-def device_for_node(n):
-    if n.type == "MatMul":
-        return "/gpu:0"
-    else:
-        return "/cpu:0"
+# def device_for_node(n):
+#     if n.type == "MatMul":
+#         return "/gpu:0"
+#     else:
+#         return "/cpu:0"
 
 
 # Keeps track of shapes, for debugging purposes
@@ -96,20 +97,21 @@ def debug_shape(name, tensor):
     full_name = "%s-shape" % name
     shape_tensors.append(tf.shape(tensor, name=full_name))
 
-with tf.device(device_for_node):
-    # Input data
-    # --------------------------------------------------
-    # Store the data in graph notes
-    train_x_const = tf.constant(train_x.astype("int32"))
-    train_y_const = tf.constant(train_y.astype("float32"))
-    # Use Tensorflow's queues and batching features
-    x_slice, y_slice = tf.train.slice_input_producer(
-        [train_x_const, train_y_const],
-        num_epochs=NUM_EPOCHS)
-    x, y_ = tf.train.batch([x_slice, y_slice], batch_size=BATCH_SIZE)
+# Input data
+# --------------------------------------------------
+# Store the data in graph notes
+train_x_const = tf.constant(train_x.astype("int32"))
+train_y_const = tf.constant(train_y.astype("float32"))
+# Use Tensorflow's queues and batching features
+x_slice, y_slice = tf.train.slice_input_producer(
+    [train_x_const, train_y_const],
+    num_epochs=NUM_EPOCHS)
+x, y_ = tf.train.batch([x_slice, y_slice], batch_size=BATCH_SIZE)
 
-    # Layer 1: Embedding
-    # --------------------------------------------------
+# Layer 1: Embedding
+# --------------------------------------------------
+# Not supported by GPU?
+with tf.device('/cpu:0'):
     with tf.name_scope("embedding"):
         W_embeddings = tf.Variable(
             tf.random_uniform([VOCABULARY_SIZE, EMBEDDING_SIZE], -1.0, 1.0),
@@ -120,92 +122,94 @@ with tf.device(device_for_node):
         embed_expanded = tf.expand_dims(embed, -1)
         debug_shape("W", embed_expanded)
 
-    # Layer 2 and 3: Convolution + Max-pooling
-    # --------------------------------------------------
 
-    def build_convpool(filter_size, num_filters):
-        """
-        Helper function to build a convolution + max-pooling layer
-        """
-        W = tf.get_variable(
-            "weights",
-            [filter_size, EMBEDDING_SIZE, 1, num_filters],
-            initializer=tf.truncated_normal_initializer(stddev=0.1))
-        b = tf.get_variable(
-            "bias",
-            [num_filters],
-            initializer=tf.constant_initializer(0.1))
-        conv = tf.nn.conv2d(
-            embed_expanded, W, strides=[1, 1, 1, 1], padding='VALID')
-        h_conv = tf.nn.relu(conv + b, name="conv")
-        return tf.nn.max_pool(
-            h_conv,
-            ksize=[1, SENTENCE_LENGTH_PADDED - filter_size + 1, 1, 1],
-            strides=[1, 1, 1, 1],
-            padding='VALID',
-            name="pool")
+# Layer 2 and 3: Convolution + Max-pooling
+# --------------------------------------------------
+def build_convpool(filter_size, num_filters):
+    """
+    Helper function to build a convolution + max-pooling layer
+    """
+    W = tf.get_variable(
+        "weights",
+        [filter_size, EMBEDDING_SIZE, 1, num_filters],
+        initializer=tf.truncated_normal_initializer(stddev=0.1))
+    b = tf.get_variable(
+        "bias",
+        [num_filters],
+        initializer=tf.constant_initializer(0.1))
+    conv = tf.nn.conv2d(
+        embed_expanded, W, strides=[1, 1, 1, 1], padding='VALID')
+    h_conv = tf.nn.relu(conv + b, name="conv")
+    return tf.nn.max_pool(
+        h_conv,
+        ksize=[1, SENTENCE_LENGTH_PADDED - filter_size + 1, 1, 1],
+        strides=[1, 1, 1, 1],
+        padding='VALID',
+        name="pool")
 
-    # For each filter size, build a convolution + maxpool layer
-    pooled_outputs = []
-    for filter_size in L1_FILTER_SIZES:
+# For each filter size, build a convolution + maxpool layer
+pooled_outputs = []
+for i, filter_size in L1_FILTER_SIZES:
+    # Put each conv layer on a separate GPU if possible
+    with tf.device("/gpu:%d" % (i % NUM_GPUS)):
         with tf.variable_scope("conv-maxpool-%s" % filter_size):
             pooled = build_convpool(filter_size, L1_NUM_FILTERS)
             pooled_outputs.append(pooled)
             debug_shape("h", pooled)
 
-    # Combine all the pooled features into one tensor
-    h_pool = tf.concat(3, pooled_outputs)
-    debug_shape("pooled-output-final-h", h_pool)
+# Combine all the pooled features into one tensor
+h_pool = tf.concat(3, pooled_outputs)
+debug_shape("pooled-output-final-h", h_pool)
 
-    # Layer 4: Fully connected (affine) layer
-    # --------------------------------------------------
-    total_filters = L1_NUM_FILTERS * len(L1_FILTER_SIZES)
-    with tf.name_scope("affine"):
-        # Flatten the pooled features into a [batch, features] vector
-        h_pool_flat = tf.reshape(h_pool, [-1, total_filters])
-        W_affine = tf.Variable(
-            tf.truncated_normal([total_filters, AFFINE_LAYER_DIM], stddev=0.1),
-            name="W_affine")
-        b_affine = tf.Variable(
-            tf.constant(0.1, shape=[AFFINE_LAYER_DIM]),
-            name="b_affine")
-        h_affine = tf.nn.relu(
-            tf.matmul(h_pool_flat, W_affine) + b_affine,
-            name="h_affine")
-        debug_shape("pooled-flattened", h_pool_flat)
-        debug_shape("h", h_affine)
+# Layer 4: Fully connected (affine) layer
+# --------------------------------------------------
+total_filters = L1_NUM_FILTERS * len(L1_FILTER_SIZES)
+with tf.name_scope("affine"):
+    # Flatten the pooled features into a [batch, features] vector
+    h_pool_flat = tf.reshape(h_pool, [-1, total_filters])
+    W_affine = tf.Variable(
+        tf.truncated_normal([total_filters, AFFINE_LAYER_DIM], stddev=0.1),
+        name="W_affine")
+    b_affine = tf.Variable(
+        tf.constant(0.1, shape=[AFFINE_LAYER_DIM]),
+        name="b_affine")
+    h_affine = tf.nn.relu(
+        tf.matmul(h_pool_flat, W_affine) + b_affine,
+        name="h_affine")
+    debug_shape("pooled-flattened", h_pool_flat)
+    debug_shape("h", h_affine)
 
-    # Dropout
-    # --------------------------------------------------
-    with tf.name_scope("dropout"):
-        h_affine_drop = tf.nn.dropout(h_affine, DROPOUT_PROB)
+# Dropout
+# --------------------------------------------------
+with tf.name_scope("dropout"):
+    h_affine_drop = tf.nn.dropout(h_affine, DROPOUT_PROB)
 
-    # Layer 5: Softmax / Readout
-    # --------------------------------------------------
-    with tf.name_scope("softmax"):
-        W_softmax = tf.Variable(tf.truncated_normal(
-            [AFFINE_LAYER_DIM, NUM_CLASSES], stddev=0.1), name="W")
-        b_softmax = tf.Variable(
-            tf.constant(0.1, shape=[NUM_CLASSES]), name="b")
-        y = tf.nn.softmax(
-            tf.matmul(h_affine_drop, W_softmax) + b_softmax, name="y")
+# Layer 5: Softmax / Readout
+# --------------------------------------------------
+with tf.name_scope("softmax"):
+    W_softmax = tf.Variable(tf.truncated_normal(
+        [AFFINE_LAYER_DIM, NUM_CLASSES], stddev=0.1), name="W")
+    b_softmax = tf.Variable(
+        tf.constant(0.1, shape=[NUM_CLASSES]), name="b")
+    y = tf.nn.softmax(
+        tf.matmul(h_affine_drop, W_softmax) + b_softmax, name="y")
 
-    # Training procedure
-    # --------------------------------------------------
-    with tf.name_scope("loss"):
-        ce_loss_mean = -tf.reduce_mean(y_ * tf.log(y), name="ce_loss_mean")
-    with tf.name_scope("accuracy"):
-        correct_predictions = tf.equal(
-            tf.argmax(y, 1), tf.argmax(y_, 1), name="correct_predictions")
-        accuracy = tf.reduce_mean(
-            tf.cast(correct_predictions, "float"), name="accuracy")
-    train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(ce_loss_mean)
+# Training procedure
+# --------------------------------------------------
+with tf.name_scope("loss"):
+    ce_loss_mean = -tf.reduce_mean(y_ * tf.log(y), name="ce_loss_mean")
+with tf.name_scope("accuracy"):
+    correct_predictions = tf.equal(
+        tf.argmax(y, 1), tf.argmax(y_, 1), name="correct_predictions")
+    accuracy = tf.reduce_mean(
+        tf.cast(correct_predictions, "float"), name="accuracy")
+train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(ce_loss_mean)
 
-    # Summaries
-    # --------------------------------------------------
-    ce_summary = tf.scalar_summary("cross-entropy loss", ce_loss_mean)
-    accuracy_summary = tf.scalar_summary("accuracy", accuracy)
-    summary_op = tf.merge_all_summaries()
+# Summaries
+# --------------------------------------------------
+ce_summary = tf.scalar_summary("cross-entropy loss", ce_loss_mean)
+accuracy_summary = tf.scalar_summary("accuracy", accuracy)
+summary_op = tf.merge_all_summaries()
 
 
 # Training

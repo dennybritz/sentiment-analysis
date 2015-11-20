@@ -12,6 +12,7 @@ git-lfs install
 sudo apt-get install -y build-essential git python-pip python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot unzip python-numpy swig python-pandas python-sklearn htop
 sudo pip install -U pip
 sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+sudo pip install --upgrade pandas
 
 git clone https://github.com/dennybritz/sentiment-analysis.git
 cd sentiment-analysis/char-cnn
@@ -32,6 +33,7 @@ sudo apt-get update
 sudo apt-get install -y cuda
 
 # Install cuDNN
+# You get the CUDNN_URL by logging into your nivida account and downloading cuDNN
 wget $CUDNN_URL -O cudnn-6.5-linux-x64-v2.tgz
 tar -zxf cudnn-6.5-linux-x64-v2.tgz
 cd cudnn-6.5-linux-x64-v2
