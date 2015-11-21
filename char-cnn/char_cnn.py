@@ -1,9 +1,9 @@
+#! /usr/bin/env python
+
 import sys
 import os
 import tensorflow as tf
-sys.path.append(os.pardir)
 from models.base import BaseNN
-
 
 class CharCNN(BaseNN):
     def __init__(self, vocabulary_size, embedding_size=128, filter_sizes=[1, 2, 3], num_filters=128,

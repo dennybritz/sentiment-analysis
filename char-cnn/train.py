@@ -5,12 +5,12 @@ import os
 import numpy as np
 import tensorflow as tf
 import time
-from char_cnn import CharCNN
-from trainer import Trainer
 from sklearn.cross_validation import train_test_split
 
+sys.path.append(os.pardir)
+
+from char_cnn import CharCNN
 from utils import ymr_data
-from models.base import BaseNN
 from models.trainer import Trainer
 
 
@@ -43,6 +43,7 @@ print("\ntrain/dev/test size: {:d}/{:d}/{:d}\n".format(len(train_y), len(dev_y),
 
 
 with tf.Graph().as_default():
+    # Out model
     cnn = CharCNN(
         VOCABULARY_SIZE,
         embedding_size=EMBEDDING_SIZE,
@@ -77,25 +78,22 @@ with tf.Graph().as_default():
         tf.scalar_summary("accuracy", cnn.accuracy(predictions, labels))
         summary_op = tf.merge_all_summaries()
 
-    eval_feed_dict = {x: dev_x, labels: dev_y}
-
-    # Create an run session
-    step = 0
+    # Create anew session
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=ALLOW_SOFT_PLACEMENT))
     with sess.as_default():
+        # Creat a train helper
+        eval_feed_dict = {x: dev_x, labels: dev_y}
         trainer = Trainer(
-            train_op,
-            global_step,
-            summary_op,
-            eval_feed_dict,
-            evaluate_every=EVALUATE_EVERY,
+            train_op, global_step, summary_op, eval_feed_dict, evaluate_every=EVALUATE_EVERY,
             save_every=EVALUATE_EVERY)
-        # Initialize Variables and input Data
+        # Initialize Variables and input data
         sess.run(
             [tf.initialize_all_variables(), train_x_var.initializer, train_y_var.initializer],
             {placeholder_x: train_x, placeholder_y: train_y})
+        # Initialize queues
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        # Print model parameters
         cnn.print_parameters()
         try:
             while not coord.should_stop():
