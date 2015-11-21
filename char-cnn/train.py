@@ -11,95 +11,94 @@ sys.path.append(os.pardir)
 
 from char_cnn import CharCNN
 from utils import ymr_data
-from models.trainer import Trainer
 
 
 # Parameters
 # ==================================================
 
 # Model Hyperparameters
-SENTENCE_LENGTH_PADDED = int(os.getenv("SENTENCE_LENGTH_PADDED", "256"))
-AFFINE_LAYER_DIM = int(os.getenv("AFFINE_LAYER_DIM", "256"))
-EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "128"))
-NUM_FILTERS = int(os.getenv("NUM_FILTERS", "128"))
-FILTER_SIZES = map(int, os.getenv("FILTER_SIZES", "1,2,3").split(","))
-DROPOUT_PROB = float(os.getenv("DROPOUT_PROB", "0.5"))
+tf.flags.DEFINE_integer("sentence_length", 256, "Padded sentence length")
+tf.flags.DEFINE_integer("affine_layer_dim", 256, "Dimensionality of affine (fully-connected) layer")
+tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding")
+tf.flags.DEFINE_integer("num_filters", 128, "Number of filters, per filter size")
+tf.flags.DEFINE_string("filter_sizes", "1,2,3", "Comma-separated filter sizes")
+tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability")
 
 # Training parameters
-NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "100"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "128"))
-EVALUATE_EVERY = int(os.getenv("EVALUATE_EVERY", "16"))
+tf.flags.DEFINE_integer("num_epochs", 128, "Number of training epochs")
+tf.flags.DEFINE_integer("batch_size", 128, "Input data batch size")
+tf.flags.DEFINE_integer("evaluate_every", 16, "Evaluate model on dev set after this number of steps")
 
 # Misc Parameters
-NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
-ALLOW_SOFT_PLACEMENT = bool(os.getenv("ALLOW_SOFT_PLACEMENT", 1))
-LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", 0))
+tf.flags.DEFINE_integer("num_gpus", 4, "Max number of GPUs to use")
+tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow soft device placement (e.g. no GPU)")
+tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
+
+FLAGS = tf.flags.FLAGS
 
 # Get data
-train_x, train_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=SENTENCE_LENGTH_PADDED)
+train_x, train_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=FLAGS.sentence_length)
 train_x, dev_x, train_y, dev_y = train_test_split(train_x, train_y, test_size=0.05)
-VOCABULARY_SIZE = max(train_x.max(), dev_x.max(), test_x.max())
+vocabulary_size = max(train_x.max(), dev_x.max(), test_x.max())
 print("\ntrain/dev/test size: {:d}/{:d}/{:d}\n".format(len(train_y), len(dev_y), len(test_y)))
 
-
 with tf.Graph().as_default():
-    # Out model
-    cnn = CharCNN(
-        VOCABULARY_SIZE,
-        embedding_size=EMBEDDING_SIZE,
-        filter_sizes=FILTER_SIZES,
-        num_filters=NUM_FILTERS,
-        affine_dim=AFFINE_LAYER_DIM,
-        dropout_keep_prob=DROPOUT_PROB,
-        num_gpus=NUM_GPUS)
-
-    # Generate input batches
-    with tf.variable_scope("input"):
-        placeholder_x = tf.placeholder(tf.int32, train_x.shape)
-        placeholder_y = tf.placeholder(tf.float32, train_y.shape)
-        train_x_var = tf.Variable(placeholder_x, trainable=False, collections=[])
-        train_y_var = tf.Variable(placeholder_y, trainable=False, collections=[])
-        x, labels = cnn.build_input_batches(train_x_var, train_y_var, NUM_EPOCHS, BATCH_SIZE)
-
-    # Generate predictions
-    predictions = cnn.inference(x, labels)
-
-    # Loss
-    with tf.variable_scope("loss"):
-        loss = cnn.loss(predictions, labels)
-
-    # Train
-    global_step = tf.Variable(0, name="global_step")
-    train_op = cnn.train(loss, global_step)
-
-    # Summaries
-    with tf.variable_scope("metrics"):
-        tf.scalar_summary("loss", loss)
-        tf.scalar_summary("accuracy", cnn.accuracy(predictions, labels))
-        summary_op = tf.merge_all_summaries()
-
-    # Create anew session
-    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=ALLOW_SOFT_PLACEMENT))
+    session_conf = tf.ConfigProto(
+        allow_soft_placement=FLAGS.allow_soft_placement,
+        log_device_placement=FLAGS.log_device_placement)
+    sess = tf.Session(config=session_conf)
     with sess.as_default():
-        # Creat a train helper
-        eval_feed_dict = {x: dev_x, labels: dev_y}
-        trainer = Trainer(
-            train_op, global_step, summary_op, eval_feed_dict, evaluate_every=EVALUATE_EVERY,
-            save_every=EVALUATE_EVERY)
-        # Initialize Variables and input data
-        sess.run(
-            [tf.initialize_all_variables(), train_x_var.initializer, train_y_var.initializer],
-            {placeholder_x: train_x, placeholder_y: train_y})
+
+        # Instantiate our model
+        cnn = CharCNN(
+            vocabulary_size,
+            FLAGS.sentence_length,
+            2,
+            embedding_size=FLAGS.embedding_dim,
+            filter_sizes=map(int, FLAGS.filter_sizes.split(",")),
+            num_filters=FLAGS.num_filters,
+            affine_dim=FLAGS.affine_layer_dim,
+            dropout_keep_prob=FLAGS.dropout_keep_prob,
+            num_gpus=FLAGS.num_gpus)
+
+        # Generate input batches (using tensorfloe)
+        with tf.variable_scope("input"):
+            placeholder_x = tf.placeholder(tf.int32, train_x.shape)
+            placeholder_y = tf.placeholder(tf.float32, train_y.shape)
+            train_x_var = tf.Variable(placeholder_x, trainable=False, collections=[])
+            train_y_var = tf.Variable(placeholder_y, trainable=False, collections=[])
+            x_slice, y_slice = tf.train.slice_input_producer([train_x_var, train_y_var], num_epochs=FLAGS.num_epochs)
+            x_batch, y_batch = tf.train.batch([x_slice, y_slice], batch_size=FLAGS.batch_size)
+
+        # Define Training procedure
+        out_dir = os.path.join(os.path.curdir, "runs", str(int(time.time())))
+        global_step = tf.Variable(0, name="global_step")
+        train_op = tf.train.AdamOptimizer(1e-4).minimize(cnn.loss, global_step=global_step)
+
+        # Generate train and eval seps
+        train_step = cnn.build_train_step(out_dir, train_op, global_step, cnn.summaries, save_every=8, sess=sess)
+        eval_step = cnn.build_eval_step(out_dir, global_step, cnn.summaries, sess=sess)
+
+        # Initialize variables and input data
+        sess.run(tf.initialize_all_variables())
+        sess.run([train_x_var.initializer, train_y_var.initializer], {placeholder_x: train_x, placeholder_y: train_y})
+
         # Initialize queues
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
         # Print model parameters
         cnn.print_parameters()
+
+        # Repeat until we're done (the input queue throws an error)...
         try:
             while not coord.should_stop():
-                trainer.step()
+                train_step({cnn.input_x: x_batch.eval(), cnn.input_y: y_batch.eval()})
+                if global_step.eval() % FLAGS.evaluate_every == 0:
+                    eval_step({cnn.input_x: dev_x, cnn.input_y: dev_y})
         except tf.errors.OutOfRangeError:
-            print("Done!")
+            print("Yay, training done!")
+            eval_step({cnn.input_x: dev_x, cnn.input_y: dev_y})
         finally:
             coord.request_stop()
         coord.join(threads)

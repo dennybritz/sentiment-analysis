@@ -1,23 +1,58 @@
 #! /usr/bin/env python
-
 import sys
 import os
 import tensorflow as tf
-from models.base import BaseNN
+from utils.mixins import NNMixin, TrainMixin
 
-class CharCNN(BaseNN):
-    def __init__(self, vocabulary_size, embedding_size=128, filter_sizes=[1, 2, 3], num_filters=128,
-                 affine_dim=256, dropout_keep_prob=0.5, num_gpus=1, optimizer=None):
-        self.vocabulary_size = vocabulary_size
-        self.embedding_size = embedding_size
-        self.filter_sizes = filter_sizes
-        self.num_filters = num_filters
-        self.affine_dim = affine_dim
-        self.dropout_keep_prob = dropout_keep_prob
-        self.num_gpus = num_gpus
-        self.optimizer = optimizer if optimizer else tf.train.AdamOptimizer(1e-4)
 
-    def build_conv_maxpool(self, filter_shape, pool_shape, input_tensor):
+class CharCNN(object, NNMixin, TrainMixin):
+    """
+    A CNN for text classifications
+    Embedding -> Convolutinal Layer -> Affine Layer -> Softmax Prediction
+    """
+    def __init__(
+        self, vocabulary_size, sequence_length, num_classes=2, embedding_size=128,
+            filter_sizes=[1, 2, 3], num_filters=128, affine_dim=256, dropout_keep_prob=0.5, num_gpus=1):
+
+        self.input_x = tf.placeholder(tf.int32, [None, sequence_length])
+        self.input_y = tf.placeholder(tf.float32, [None, num_classes])
+
+        self.embedded_chars = self._build_embedding([vocabulary_size, embedding_size], self.input_x)
+        # Add another dimension, expected by the convolutional layer
+        self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1)
+
+        # Create a convolution + maxpool layer for each filter
+        pooled_outputs = []
+        for i, filter_size in enumerate(filter_sizes):
+            with tf.variable_scope("conv-maxpool-%s" % filter_size), tf.device("/gpu:%d" % (i % num_gpus)):
+                filter_shape = [filter_size, embedding_size, 1, num_filters]
+                pool_filter_shape = [1, sequence_length - filter_size + 1, 1, 1]
+                pooled = self._build_conv_maxpool(filter_shape, pool_filter_shape, self.embedded_chars_expanded)
+                pooled_outputs.append(pooled)
+
+        # Combine all the pooled features
+        num_filters_total = num_filters * len(filter_sizes)
+        self.h_pool = tf.concat(3, pooled_outputs)
+        self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
+
+        # Affine Layer with dropout
+        self.h_affine = self._build_affine([num_filters_total, affine_dim], self.h_pool_flat)
+        self.h_affine_drop = tf.nn.dropout(self.h_affine, dropout_keep_prob)
+
+        # Softmax Layer (Final output)
+        self.y = self._build_softmax([affine_dim, num_classes], self.h_affine_drop)
+
+        # Loss
+        self.loss = self._build_total_ce_loss(self.y, self.input_y)
+        self.mean_loss = self._build_mean_ce_loss(self.y, self.input_y)
+
+        # Summaries
+        total_loss_summary = tf.scalar_summary("total loss", self.loss)
+        mean_loss_summary = tf.scalar_summary("mean loss", self.mean_loss)
+        accuracy_summmary = tf.scalar_summary("accuracy", self._build_accuracy(self.y, self.input_y))
+        self.summaries = tf.merge_all_summaries()
+
+    def _build_conv_maxpool(self, filter_shape, pool_shape, input_tensor):
         """
         Builds a convolutional layer followed by a max-pooling layer.
         """
@@ -26,42 +61,3 @@ class CharCNN(BaseNN):
         conv = tf.nn.conv2d(input_tensor, W, strides=[1, 1, 1, 1], padding="VALID")
         h = tf.nn.relu(conv + b, name="conv")
         return tf.nn.max_pool(h, ksize=pool_shape, strides=[1, 1, 1, 1], padding='VALID', name="pool")
-
-    def inference(self, x, labels):
-        """
-        Builds the graph and returns the final prediction.
-        """
-
-        sequence_length = x.get_shape().as_list()[1]
-        num_classes = labels.get_shape().as_list()[1]
-
-        with tf.variable_scope("embedding"):
-            embedded_chars = self.build_embedding_layer([self.vocabulary_size, self.embedding_size], x)
-            embedded_chars_expanded = tf.expand_dims(embedded_chars, -1)
-
-        # Create a convolution + maxpool layer for each filter
-        pooled_outputs = []
-        for i, filter_size in enumerate(self.filter_sizes):
-            with tf.variable_scope("conv-maxpool-%s" % filter_size):
-                with tf.device("/gpu:%d" % (i % self.num_gpus)):
-                    filter_shape = [filter_size, self.embedding_size, 1, self.num_filters]
-                    pool_shape = [1, sequence_length - filter_size + 1, 1, 1]
-                    pooled = self.build_conv_maxpool(filter_shape, pool_shape, embedded_chars_expanded)
-                    pooled_outputs.append(pooled)
-
-        # Combine all the pooled features
-        num_filters_total = self.num_filters * len(self.filter_sizes)
-        h_pool = tf.concat(3, pooled_outputs)
-        h_pool_flat = tf.reshape(h_pool, [-1, num_filters_total])
-
-        # Affine Layer with dropout
-        with tf.variable_scope("affine"):
-            h_affine = self.build_affine([num_filters_total, self.affine_dim], h_pool_flat)
-        h_affine_drop = tf.nn.dropout(h_affine, self.dropout_keep_prob)
-
-        # Softmax Layer (Final output)
-        with tf.variable_scope("softmax"):
-            y = self.build_softmax([self.affine_dim, num_classes], h_affine_drop)
-
-        # Return final prediction
-        return y

@@ -76,3 +76,5 @@ def generate_dataset(fixed_length=None, one_hot=True):
     test_x, test_y = make_xy(test, vocab, one_hot=one_hot)
 
     return [train_x, train_y, test_x, test_y]
+
+
