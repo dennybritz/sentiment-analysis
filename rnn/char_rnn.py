@@ -21,9 +21,9 @@ class CharRNN(object, NNMixin, TrainMixin):
             self.embedded_chars = self._build_embedding([vocabulary_size, embedding_size], self.input_x)
 
         with tf.variable_scope("rnn") as scope:
-            self.state = tf.Variable(tf.zeros([batch_size, self.cell.state_size]))
+            self.initial_state = tf.Variable(tf.zeros([batch_size, self.cell.state_size]))
             self.outputs = []
-            self.states = [self.state]
+            self.states = [self.initial_state]
             for i in range(sequence_length):
                 if i > 0:
                     scope.reuse_variables()
@@ -43,21 +43,25 @@ class CharRNN(object, NNMixin, TrainMixin):
             if loss == "linear_gain":
                 # Loss with linear gain. We output at each time step and multiply losses with a linspace
                 # Because we have more gradients this can result in faster learning
-                packed_ys = tf.pack(self.ys)
-                tiled_labels = tf.pack([self.input_y for i in range(sequence_length)])
-                accumulated_losses = -tf.reduce_sum(tiled_labels * tf.log(packed_ys), [1, 2])
-                loss_gains = tf.linspace(0.0, 1.0, sequence_length)
-                annealed_losses = tf.mul(loss_gains, tf.concat(0, accumulated_losses))
-                accumulated_loss = tf.reduce_sum(annealed_losses)
-                self.loss = accumulated_loss
+                self.anneal_factors = tf.linspace(0.0, 1.0, sequence_length)
+                annealed_losses = self._build_annealed_losses(self.ys, self.input_y, anneal_factors)
+                self.loss = tf.reduce_sum(annealed_losses)
                 self.mean_loss = tf.reduce_mean(annealed_losses)
             elif loss == "last":
                 # Standard loss, only last output is considered
                 self.loss = self._build_total_ce_loss(self.ys[-1], self.input_y)
-                self._build_mean_ce_loss(self.ys[-1], self.input_y)
+                self.mean_loss = self._build_mean_ce_loss(self.ys[-1], self.input_y)
 
         # Summaries
         total_loss_summary = tf.scalar_summary("total loss", self.loss)
         mean_loss_summary = tf.scalar_summary("mean loss", self.mean_loss)
         accuracy_summmary = tf.scalar_summary("accuracy", self._build_accuracy(self.y, self.input_y))
         self.summaries = tf.merge_all_summaries()
+
+    def _build_annealed_losses(self, outputs, labels, anneal_factors):
+        sequence_length = len(outputs)
+        packed_outputs = tf.pack(outputs)
+        tiled_labels = tf.pack([labels for i in range(sequence_length)])
+        accumulated_losses = -tf.reduce_sum(tiled_labels * tf.log(packed_outputs), [1, 2])
+        annealed_losses = tf.mul(anneal_factors, tf.concat(0, accumulated_losses))
+        return annealed_losses
