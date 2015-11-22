@@ -38,6 +38,7 @@ class CharCNN(object, NNMixin, TrainMixin):
 
         # Softmax Layer (Final output)
         self.y = self._build_softmax([affine_dim, num_classes], self.h_affine_drop)
+        self.predictions = tf.argmax(self.y, 1)
 
         # Loss
         self.loss = self._build_total_ce_loss(self.y, self.input_y)

@@ -7,6 +7,7 @@ import tensorflow as tf
 import time
 
 from sklearn.cross_validation import train_test_split
+from sklearn.metrics import classification_report
 
 sys.path.append(os.pardir)
 
@@ -77,7 +78,7 @@ with tf.Graph().as_default():
 
         # Generate train and eval seps
         train_step = cnn.build_train_step(out_dir, train_op, global_step, cnn.summaries, save_every=8, sess=sess)
-        eval_step = cnn.build_eval_step(out_dir, global_step, cnn.summaries, sess=sess)
+        eval_step = cnn.build_eval_step(out_dir, cnn.predictions, global_step, cnn.summaries, sess=sess)
 
         # Initialize variables and input data
         sess.run(tf.initialize_all_variables())
@@ -95,7 +96,9 @@ with tf.Graph().as_default():
             while not coord.should_stop():
                 train_step({cnn.input_x: x_batch.eval(), cnn.input_y: y_batch.eval()})
                 if global_step.eval() % FLAGS.evaluate_every == 0:
-                    eval_step({cnn.input_x: dev_x, cnn.input_y: dev_y})
+                    predictions, _, _ = eval_step({cnn.input_x: dev_x, cnn.input_y: dev_y})
+                    print(classification_report(np.argmax(dev_y, axis=1), predictions))
+
         except tf.errors.OutOfRangeError:
             print("Yay, training done!")
             eval_step({cnn.input_x: dev_x, cnn.input_y: dev_y})

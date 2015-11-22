@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 import time
 
-from sklearn.cross_validation import train_test_split
+from sklearn.metrics import classification_report
 
 sys.path.append(os.pardir)
 
@@ -41,7 +41,13 @@ for attr, value in FLAGS.__flags.iteritems():
 # Get data
 train_x, train_y, dev_x, dev_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=FLAGS.sentence_length)
 vocabulary_size = max(train_x.max(), dev_x.max(), test_x.max()) + 1
+# For evaluation, make evenly-sized batches so that we can feed them into the network
+drop_num_elements = len(dev_y) % FLAGS.batch_size
+if drop_num_elements > 0:
+    dev_x = dev_x[:-drop_num_elements]
+    dev_y = dev_y[:-drop_num_elements]
 print("\ntrain/dev/test size: {:d}/{:d}/{:d}\n".format(len(train_y), len(dev_y), len(test_y)))
+
 
 with tf.Graph().as_default():
     session_conf = tf.ConfigProto(
@@ -81,7 +87,7 @@ with tf.Graph().as_default():
 
         # Generate train and eval seps
         train_step = rnn.build_train_step(out_dir, train_op, global_step, rnn.summaries, save_every=8, sess=sess)
-        eval_step = rnn.build_eval_step(out_dir, global_step, rnn.summaries, sess=sess)
+        eval_step = rnn.build_eval_step(out_dir, rnn.predictions, global_step, rnn.summaries, sess=sess)
 
         # Initialize variables and input data
         sess.run(tf.initialize_all_variables())
@@ -99,7 +105,15 @@ with tf.Graph().as_default():
             while not coord.should_stop():
                 train_step({rnn.input_x: x_batch.eval(), rnn.input_y: y_batch.eval()})
                 if global_step.eval() % FLAGS.evaluate_every == 0:
-                    eval_step({rnn.input_x: dev_x[:FLAGS.batch_size], rnn.input_y: dev_y[:FLAGS.batch_size]})
+                    # Do for each batch and evaluate result
+                    nbatches = len(dev_y)/FLAGS.batch_size
+                    predictions = []
+                    for batch_x, batch_y in zip(np.split(dev_x, nbatches), np.split(dev_y, nbatches)):
+                        dev_feed_dict = {rnn.input_x: batch_x, rnn.input_y: batch_y}
+                        batch_predictions = sess.run(rnn.predictions, feed_dict=dev_feed_dict)
+                        predictions = np.append(predictions, batch_predictions)
+                    print(classification_report(np.argmax(dev_y, axis=1), predictions))
+
         except tf.errors.OutOfRangeError:
             print("Yay, training done!")
             eval_step({rnn.input_x: dev_x, rnn.input_y: dev_y})

@@ -37,6 +37,7 @@ class CharRNN(object, NNMixin, TrainMixin):
         with tf.variable_scope("softmax"):
             self.ys = [self._build_softmax([hidden_dim, num_classes], o) for o in self.outputs]
             self.y = self.ys[-1]
+            self.predictions = tf.argmax(self.y, 1)
 
         with tf.variable_scope("loss"):
             if loss == "linear_gain":

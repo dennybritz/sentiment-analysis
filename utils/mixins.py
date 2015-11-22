@@ -94,7 +94,7 @@ class TrainMixin:
         summary_str = "\n".join(["{}: {:f}".format(v.tag, v.simple_value) for v in filtered_summaries])
         print("\n{}\n".format(summary_str))
 
-    def build_eval_step(self, out_dir, global_step, summary_op, prefix="dev", sess=None):
+    def build_eval_step(self, out_dir, predict_op, global_step, summary_op, prefix="dev", sess=None):
         """
         Builds a step function that evaluates a given input and prints out summaries.
         Also writes summaries to an event file for Tensorboard.
@@ -106,10 +106,10 @@ class TrainMixin:
 
         # A single evaluation step
         def step(feed_dict=None):
-            global_step_, summaries_ = sess.run([global_step, summary_op], feed_dict=feed_dict)
+            out_, global_step_, summaries_ = sess.run([predict_op, global_step, summary_op], feed_dict=feed_dict)
             eval_writer.add_summary(summaries_, global_step_)
             self.print_summaries(summaries_)
-            return [summaries_, global_step_]
+            return [out_, summaries_, global_step_]
 
         return step
 
