@@ -1,5 +1,3 @@
-import sys
-import os
 import tensorflow as tf
 from utils.mixins import NNMixin, TrainMixin
 

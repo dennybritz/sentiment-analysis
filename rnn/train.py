@@ -1,169 +1,108 @@
 #! /usr/bin/env python
 
-import sys
-import os
 import numpy as np
+import os
+import sys
 import tensorflow as tf
-from tensorflow.models.rnn import rnn_cell
 import time
+
 from sklearn.cross_validation import train_test_split
 
 sys.path.append(os.pardir)
-import utils.ymr_data as ymr
+
+from char_rnn import CharRNN
+from utils import ymr_data
+
 
 # Parameters
 # ==================================================
 
 # Model Hyperparameters
-SENTENCE_LENGTH_PADDED = int(os.getenv("SENTENCE_LENGTH_PADDED", "512"))
-HIDDEN_DIM = int(os.getenv("HIDDEN_DIM", "128"))
-EMBEDDING_SIZE = int(os.getenv("EMBEDDING_SIZE", "128"))
+tf.flags.DEFINE_integer("sentence_length", 256, "Padded sentence length")
+tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding")
+tf.flags.DEFINE_integer("hidden_dim", 256, "Dimensionality of the cell")
+tf.flags.DEFINE_integer("num_layers", 3, "Number of stacked layers in the RNN cell")
 
 # Training parameters
-LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-4"))
-NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "100"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "128"))
-EVALUATE_EVERY = int(os.getenv("EVALUATE_EVERY", "16"))
-
-# Output files
-RUNDIR = "./runs/%s" % int(time.time())
-CHECKPOINT_PREFIX = os.getenv("CHECKPOINT_PREFIX", "%s/checkpoints/char-cnn" % RUNDIR)
-TRAIN_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "%s/summaries/train" % RUNDIR)
-DEV_SUMMARY_DIR = os.getenv("TRAIN_SUMMARY_DIR", "%s/summaries/dev" % RUNDIR)
+tf.flags.DEFINE_string("loss_type", "linear_gain", "One of last or linear_gain")
+tf.flags.DEFINE_integer("num_epochs", 128, "Number of training epochs")
+tf.flags.DEFINE_integer("batch_size", 128, "Input data batch size")
+tf.flags.DEFINE_integer("evaluate_every", 16, "Evaluate model on dev set after this number of steps")
 
 # Misc Parameters
-NUM_GPUS = int(os.getenv("NUM_GPUS", "4"))
-ALLOW_SOFT_PLACEMENT = bool(os.getenv("ALLOW_SOFT_PLACEMENT", 1))
-LOG_DEVICE_PLACEMENT = bool(os.getenv("LOG_DEVICE_PLACEMENT", 0))
-PADDING_CHARACTER = u"\u0000"
-NUM_CLASSES = 2
+tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow soft device placement (e.g. no GPU)")
+tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
 
-if not os.path.exists(os.path.dirname(CHECKPOINT_PREFIX)):
-    os.makedirs(os.path.dirname(CHECKPOINT_PREFIX))
+FLAGS = tf.flags.FLAGS
+dir(FLAGS)
+for attr, value in FLAGS.__flags.iteritems():
+    print("{}: {}".format(attr, value))
 
+# Get data
+train_x, train_y, dev_x, dev_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=FLAGS.sentence_length)
+vocabulary_size = max(train_x.max(), dev_x.max(), test_x.max())
+print("\ntrain/dev/test size: {:d}/{:d}/{:d}\n".format(len(train_y), len(dev_y), len(test_y)))
 
-# Data Preparation
-# ==================================================
-df = ymr.load()
+with tf.Graph().as_default():
+    session_conf = tf.ConfigProto(
+        allow_soft_placement=FLAGS.allow_soft_placement,
+        log_device_placement=FLAGS.log_device_placement)
+    sess = tf.Session(config=session_conf)
+    with sess.as_default():
 
-# Preprocessing: Pad all sentences
-df.text = df.text.str.slice(0, SENTENCE_LENGTH_PADDED).str.ljust(
-    SENTENCE_LENGTH_PADDED, PADDING_CHARACTER)
+        # Instantiate our model
+        rnn = CharRNN(
+            vocabulary_size,
+            FLAGS.sentence_length,
+            FLAGS.batch_size,
+            2,
+            embedding_size=FLAGS.embedding_dim,
+            hidden_dim=FLAGS.hidden_dim,
+            num_layers=FLAGS.num_layers,
+            loss=FLAGS.loss_type)
 
-# Generate vocabulary and dataset
-vocab, vocab_inv = ymr.vocab(df)
-data = ymr.make_polar(df)
-train, test = ymr.train_test_split(data)
-train_x, train_y_ = ymr.make_xy(train, vocab)
-test_x, test_y_ = ymr.make_xy(test, vocab)
+        # Generate input batches (using tensorflow)
+        with tf.variable_scope("input"):
+            placeholder_x = tf.placeholder(tf.int32, train_x.shape)
+            placeholder_y = tf.placeholder(tf.float32, train_y.shape)
+            train_x_var = tf.Variable(placeholder_x, trainable=False, collections=[])
+            train_y_var = tf.Variable(placeholder_y, trainable=False, collections=[])
+            x_slice, y_slice = tf.train.slice_input_producer([train_x_var, train_y_var], num_epochs=FLAGS.num_epochs)
+            x_batch, y_batch = tf.train.batch([x_slice, y_slice], batch_size=FLAGS.batch_size)
 
-VOCABULARY_SIZE = len(vocab)
+        # Define Training procedure
+        out_dir = os.path.join(os.path.curdir, "runs", str(int(time.time())))
+        global_step = tf.Variable(0, name="global_step")
+        optimizer = tf.train.AdamOptimizer(1e-4)
+        # Clip the gradients
+        tvars = tf.trainable_variables()
+        grads, _ = tf.clip_by_global_norm(tf.gradients(rnn.loss, tvars), 5)
+        train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=global_step)
 
-# Convert ys to one-hot vectors (probability distribution)
-train_y = np.zeros((len(train_y_), NUM_CLASSES))
-train_y[np.arange(len(train_y_)), train_y_] = 1.
-test_y = np.zeros((len(test_y_), NUM_CLASSES))
-test_y[np.arange(len(test_y_)), test_y_] = 1.
+        # Generate train and eval seps
+        train_step = rnn.build_train_step(out_dir, train_op, global_step, rnn.summaries, save_every=8, sess=sess)
+        eval_step = rnn.build_eval_step(out_dir, global_step, rnn.summaries, sess=sess)
 
-# Use a dev set
-train_x, dev_x, train_y, dev_y = train_test_split(
-    train_x, train_y, test_size=0.05)
+        # Initialize variables and input data
+        sess.run(tf.initialize_all_variables())
+        sess.run([train_x_var.initializer, train_y_var.initializer], {placeholder_x: train_x, placeholder_y: train_y})
 
-# Print data sizes
-print("\nData Size")
-print("----------")
-print("Training set size: %d" % (len(train_y)))
-print("Dev set size: %d" % len(dev_y))
-print("Test set size: %d" % len(test_y))
+        # Initialize queues
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
+        # Print model parameters
+        # rnn.print_parameters()
 
-# Build the graph
-# ==================================================
-# Keeps track of shapes, for debugging purposes
-shape_tensors = []
-
-def debug_shape(name, tensor):
-    full_name = "%s-shape" % name
-    shape_tensors.append(tf.shape(tensor, name=full_name))
-
-# Input data
-# --------------------------------------------------
-
-# Store the data in graph notes
-train_x_const = tf.constant(train_x.astype("int32"))
-train_y_const = tf.constant(train_y.astype("float32"))
-# Use Tensorflow's queues and batching features
-x_slice, y_slice = tf.train.slice_input_producer(
-    [train_x_const, train_y_const],
-    num_epochs=NUM_EPOCHS)
-x, y_ = tf.train.batch([x_slice, y_slice], batch_size=BATCH_SIZE)
-
-
-# Layer 1: Embedding
-# --------------------------------------------------
-# Not supported by GPU...
-with tf.device('/cpu:0'):
-    with tf.name_scope("embedding"):
-        W_embeddings = tf.Variable(
-            tf.random_uniform([VOCABULARY_SIZE, EMBEDDING_SIZE], -1.0, 1.0),
-            name="W")
-        embed = tf.nn.embedding_lookup(W_embeddings, x)
-        # Add a dimension corresponding to the channel - it's expected by the conv
-        # layer
-        embed_expanded = tf.expand_dims(embed, -1)
-        debug_shape("W", embed_expanded)
-
-# RNN Layer
-with tf.name_scope("lstm"):
-    lstm_cell = rnn_cell.BasicLSTMCell(HIDDEN_DIM, forget_bias=0.0)
-    cell = rnn_cell.MultiRNNCell([lstm_cell] * 5)
-    initial_state = cell.zero_state(batch_size, tf.float32)
-    outputs, states = rnn.rnn(cell, x, initial_state=initial_state)
-    debug_shape("outputs", outputs)
-    debug_shape("states", states)
-
-# output = tf.reshape(tf.concat(1, outputs), [-1, HIDDEN_DIM])
-# last_output = output[-1]
-
-
-def print_shapes():
-    """
-    Prints the shapes of the graph for one batch
-    """
-    sess = tf.get_default_session()
-    feed_dict = {x: train_x[:1], y_: train_y[:1]}
-    shapes = sess.run(shape_tensors, feed_dict=feed_dict)
-    print("\nShapes")
-    print("----------")
-    for k, v in zip(shape_tensors, shapes):
-        print("%s: %s" % (k.name, v))
-
-# Training Loop
-# ==================================================
-
-# Print parameters
-print "\nParameters:"
-print("----------")
-total_parameters = 0
-for v in tf.trainable_variables():
-    num_parameters = v.get_shape().num_elements()
-    print("{}: {:,}".format(v.name, num_parameters))
-    total_parameters += num_parameters
-print("\nTotal Parameters: {:,}\n".format(total_parameters))
-
-# Write graph
-tf.train.write_graph(default_graph_def, "%s/graph" % RUNDIR, "graph.pb", as_text=False)
-
-# Initialize training
-step = 0
-
-session_config = tf.ConfigProto(
-    log_device_placement=LOG_DEVICE_PLACEMENT,
-    allow_soft_placement=ALLOW_SOFT_PLACEMENT)
-
-with tf.Session(config=session_config) as sess:
-    sess.run(tf.initialize_all_variables())
-    # Initialize queue runners
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-    print_shapes()
+        # Repeat until we're done (the input queue throws an error)...
+        try:
+            while not coord.should_stop():
+                train_step({rnn.input_x: x_batch.eval(), rnn.input_y: y_batch.eval()})
+                if global_step.eval() % FLAGS.evaluate_every == 0:
+                    eval_step({rnn.input_x: dev_x[:FLAGS.batch_size], rnn.input_y: dev_y[:FLAGS.batch_size]})
+        except tf.errors.OutOfRangeError:
+            print("Yay, training done!")
+            eval_step({rnn.input_x: dev_x, rnn.input_y: dev_y})
+        finally:
+            coord.request_stop()
+        coord.join(threads)
