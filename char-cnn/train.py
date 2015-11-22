@@ -39,7 +39,7 @@ FLAGS = tf.flags.FLAGS
 
 # Get data
 train_x, train_y, dev_x, dev_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=FLAGS.sentence_length)
-vocabulary_size = max(train_x.max(), dev_x.max(), test_x.max())
+vocabulary_size = max(train_x.max(), dev_x.max(), test_x.max()) + 1
 print("\ntrain/dev/test size: {:d}/{:d}/{:d}\n".format(len(train_y), len(dev_y), len(test_y)))
 
 with tf.Graph().as_default():
