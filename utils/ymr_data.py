@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import random
-import sklearn.cross_validation
+from sklearn.cross_validation import train_test_split
 from collections import Counter
 import itertools
 import tarfile
@@ -35,15 +35,9 @@ def make_polar(data, balance=True):
 
 def make_vocab(df):
     character_counts = Counter(iter(df.text.str.cat()))
-    vocabulary = { x[0]: i for i, x in enumerate(character_counts.most_common())}
+    vocabulary = {x[0]: i for i, x in enumerate(character_counts.most_common())}
     vocabulary_inv = [x[0] for x in character_counts.most_common()]
     return [vocabulary, vocabulary_inv]
-
-
-def train_test_split(df, train_size=0.8, random_state=0):
-    train, test = sklearn.cross_validation.train_test_split(
-        df, train_size=train_size, stratify=df.rating, random_state=random_state)
-    return [train, test]
 
 
 def make_xy(df, vocabulary, one_hot=True):
@@ -56,25 +50,28 @@ def make_xy(df, vocabulary, one_hot=True):
     return [x, y]
 
 
-def generate_dataset(fixed_length=None, one_hot=True):
-    PADDING_CHARACTER = u"\u0000"
-
+def generate_dataset(fixed_length=None, one_hot=True, test_size=0.2, dev_size=0.05, random_state=10):
     # Load data
     df = load_ymr_data()
 
     # Optionally pad all sentences
     if fixed_length:
+        padding_character = u"\u0000"
         df.text = df.text.str.slice(0, fixed_length)
-        df.text = df.text.str.ljust(fixed_length, PADDING_CHARACTER)
+        df.text = df.text.str.ljust(fixed_length, padding_character)
 
     # Generate vocabulary and dataset
     vocab, vocab_inv = make_vocab(df)
     data = make_polar(df)
 
-    train, test = train_test_split(data)
+    #  Split data into train, dev, and text
+    train, test = train_test_split(data, test_size=test_size, random_state=random_state)
+    train, dev = train_test_split(train, test_size=dev_size, random_state=random_state)
+
+    # Generate inputs and labels
     train_x, train_y = make_xy(train, vocab, one_hot=one_hot)
+    dev_x, dev_y = make_xy(dev, vocab, one_hot=one_hot)
     test_x, test_y = make_xy(test, vocab, one_hot=one_hot)
 
-    return [train_x, train_y, test_x, test_y]
-
-
+    # Return
+    return [train_x, train_y, dev_x, dev_y, test_x, test_y]

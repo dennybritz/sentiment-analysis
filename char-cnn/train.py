@@ -1,10 +1,11 @@
 #! /usr/bin/env python
 
-import sys
-import os
 import numpy as np
+import os
+import sys
 import tensorflow as tf
 import time
+
 from sklearn.cross_validation import train_test_split
 
 sys.path.append(os.pardir)
@@ -37,8 +38,7 @@ tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on 
 FLAGS = tf.flags.FLAGS
 
 # Get data
-train_x, train_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=FLAGS.sentence_length)
-train_x, dev_x, train_y, dev_y = train_test_split(train_x, train_y, test_size=0.05)
+train_x, train_y, dev_x, dev_y, test_x, test_y = ymr_data.generate_dataset(fixed_length=FLAGS.sentence_length)
 vocabulary_size = max(train_x.max(), dev_x.max(), test_x.max())
 print("\ntrain/dev/test size: {:d}/{:d}/{:d}\n".format(len(train_y), len(dev_y), len(test_y)))
 
@@ -61,7 +61,7 @@ with tf.Graph().as_default():
             dropout_keep_prob=FLAGS.dropout_keep_prob,
             num_gpus=FLAGS.num_gpus)
 
-        # Generate input batches (using tensorfloe)
+        # Generate input batches (using tensorflow)
         with tf.variable_scope("input"):
             placeholder_x = tf.placeholder(tf.int32, train_x.shape)
             placeholder_y = tf.placeholder(tf.float32, train_y.shape)
