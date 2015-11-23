@@ -19,6 +19,7 @@ from utils import ymr_data
 
 # Model Hyperparameters
 tf.flags.DEFINE_integer("sentence_length", 256, "Padded sentence length")
+tf.flags.DEFINE_integer("num_steps", 64, "Number of steps to unroll at a time. Must divide sentence_length.")
 tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding")
 tf.flags.DEFINE_integer("hidden_dim", 256, "Dimensionality of the cell")
 tf.flags.DEFINE_integer("num_layers", 3, "Number of stacked layers in the RNN cell")

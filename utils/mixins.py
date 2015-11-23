@@ -44,10 +44,11 @@ class NNMixin:
         """
         Builds a softmax layer
         """
-        with tf.variable_scope("softmax"):
-            W = tf.Variable(tf.truncated_normal(shape, stddev=0.1), name="W")
-            b = tf.Variable(tf.constant(0.1, shape=shape[-1:]), name="b")
-            return tf.nn.softmax(tf.matmul(input_tensor, W) + b, name="y")
+        W_initializer = tf.truncated_normal_initializer(stddev=0.1)
+        b_initializer = tf.constant_initializer(0.1)
+        W = tf.get_variable("W", shape, initializer=W_initializer)
+        b = tf.get_variable("b", shape[-1:], initializer=b_initializer)
+        return tf.nn.softmax(tf.matmul(input_tensor, W) + b, name="y")
 
     def _build_mean_ce_loss(self, predictions, labels):
         """
@@ -113,7 +114,7 @@ class TrainMixin:
 
         return step
 
-    def build_train_step(self, out_dir, train_op, global_step, summary_op, save_every=16, sess=None):
+    def build_train_step(self, out_dir, train_op, global_step, summary_op, ops=[], save_every=16, sess=None):
         """
         Builds a training step function. Also saves summaries and optionally checkpoints model.
         Returns a step function that can be called with a feed_dict.
@@ -135,7 +136,10 @@ class TrainMixin:
         # A single training step
         def step(feed_dict=None):
             # Execute train step
-            _, global_step_, summaries_ = sess.run([train_op, global_step, summary_op], feed_dict=feed_dict)
+            all_ops = [train_op, global_step, summary_op] + ops
+            results = sess.run(all_ops, feed_dict=feed_dict)
+            _, global_step_, summaries_ = results[:3]
+            other_resuts = results[3:]
             # Print Step
             time_str = datetime.datetime.now().isoformat()
             print("{}: Step {}".format(time_str, global_step_))
@@ -145,7 +149,7 @@ class TrainMixin:
             if global_step_ % save_every == 0:
                 save_path = self.saver.save(sess, self.checkpoint_prefix, global_step_)
                 print("\nSaved model parameters to {}\n".format(save_path))
-            return [global_step_, summaries_]
+            return [global_step_, summaries_] + other_resuts
 
         # Return step function
         return step
