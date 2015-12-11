@@ -46,7 +46,7 @@ tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("sentence_length", 256, "Sentence length (default: 256)")
 tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 100)")
 tf.flags.DEFINE_integer("evaluate_dev_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
-tf.flags.DEFINE_integer("evaluate_test_every", 10, "Evaluate model on test set after this many steps (default: 1000)")
+tf.flags.DEFINE_integer("evaluate_test_every", 100, "Evaluate model on test set after this many steps (default: 1000)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 
 # Misc Parameters
