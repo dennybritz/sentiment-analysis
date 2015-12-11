@@ -45,7 +45,8 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("sentence_length", 256, "Sentence length (default: 256)")
 tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 100)")
-tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_dev_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_test_every", 1000, "Evaluate model on test set after this many steps (default: 1000)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 
 # Misc Parameters
@@ -154,11 +155,12 @@ with tf.Graph().as_default():
               cnn.input_y: y_batch,
               cnn.dropout_keep_prob: 1.0
             }
-            step, summaries, loss, accuracy = sess.run(
-                [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+            step, summaries, loss, accuracy, predictions = sess.run(
+                [global_step, dev_summary_op, cnn.loss, cnn.accuracy, cnn.predictions],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
             print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print(classification_report(np.argmax(y_batch, axis=1), predictions))
             if writer:
                 writer.add_summary(summaries, step)
 
@@ -169,9 +171,13 @@ with tf.Graph().as_default():
             x_batch, y_batch = zip(*batch)
             train_step(x_batch, y_batch)
             current_step = tf.train.global_step(sess, global_step)
-            if current_step % FLAGS.evaluate_every == 0:
-                print("\nEvaluation:")
+            if current_step % FLAGS.evaluate_dev_every == 0:
+                print("\nEvaluation (Dev):")
                 dev_step(dev_x, dev_y, writer=dev_summary_writer)
+                print("")
+            if current_step % FLAGS.evaluate_test_every == 0:
+                print("\nEvaluation (Test):")
+                dev_step(test_x, test_y)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
