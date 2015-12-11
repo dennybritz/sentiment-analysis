@@ -164,6 +164,23 @@ with tf.Graph().as_default():
             if writer:
                 writer.add_summary(summaries, step)
 
+        def test_step(x_batch, y_batch, writer=None):
+            """
+            Evaluates model on a dev set
+            """
+            predictions = []
+            batches = batch_iter(zip(x_batch, y_batch), FLAGS.batch_size, 1)
+            for batch in batches:
+                x_batch_, y_batch_ = zip(*batch)
+                feed_dict = {
+                  cnn.input_x: x_batch_,
+                  cnn.input_y: y_batch_,
+                  cnn.dropout_keep_prob: 1.0
+                }
+                batch_predictions = sess.run(cnn.predictions, feed_dict)
+                predictions = np.concatenate([predictions, batch_predictions])
+            print(classification_report(np.argmax(y_batch, axis=1), predictions))
+
         # Generate batches
         batches = batch_iter(zip(train_x, train_y), FLAGS.batch_size, FLAGS.num_epochs)
         # Training loop. For each batch...
@@ -177,7 +194,7 @@ with tf.Graph().as_default():
                 print("")
             if current_step % FLAGS.evaluate_test_every == 0:
                 print("\nEvaluation (Test):")
-                dev_step(test_x, test_y)
+                test_step(test_x, test_y)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
